@@ -13,6 +13,7 @@ captures/
 app/release/
 
 # 서명 정보는 커밋하지 않습니다.
+.private-signing/
 keystore.properties
 *.jks
 *.keystore

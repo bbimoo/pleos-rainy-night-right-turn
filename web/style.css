@@ -139,10 +139,11 @@ li time{white-space:nowrap;color:#ffffffd6;font-size:24rem}
 /* A single translucent windshield layer, composited by opacity. No blur,
    scene snapshots or per-frame image generation are used for condensation. */
 #defrost-interlude{z-index:3;pointer-events:none}
-#windshield-mist{position:absolute;inset:0;background:#d3dbe0;clip-path:polygon(3% 5%,97% 5%,86% 74%,14% 74%);will-change:opacity;opacity:0}
-.defrost-card{position:absolute;top:14%;left:50%;transform:translateX(-50%);width:900rem;max-width:88%;padding:32rem;border-radius:28rem;background:#131417ed;border:2rem solid #ffffff33;display:flex;flex-direction:column;align-items:center;gap:20rem;text-align:center;pointer-events:auto}
-.defrost-card h2{font-size:38rem}
-.defrost-card p{font-size:28rem}
-.defrost-card small{font-size:24rem;color:#ffffffb3}
-.defrost-card button{min-height:86rem;font-size:28rem}
-.defrost-card .home{min-height:60rem;padding:8rem 24rem;background:transparent;font-size:24rem}
+.mist-geometry{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+#windshield-mist{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(211,219,224,.98) 0%,rgba(211,219,224,.84) 25%,rgba(211,219,224,.52) 48%,rgba(211,219,224,.15) 70%,rgba(211,219,224,.04) 78%);clip-path:url(#windshield-opening);will-change:opacity,transform;opacity:0}
+.defrost-card{position:absolute;left:40rem;bottom:180rem;width:500rem;max-width:42%;padding:20rem;border-radius:24rem;background:#131417e6;border:2rem solid #ffffff33;display:flex;flex-direction:column;gap:12rem;pointer-events:auto}
+.defrost-card p{font-size:22rem;line-height:1.35;color:#ffffffd6}
+.defrost-card button{min-height:80rem;padding:12rem 20rem;font-size:26rem}
+#driving-ui{position:absolute;inset:0;z-index:4;pointer-events:none}
+#driving-ui button{pointer-events:auto}
+#touch{z-index:4}

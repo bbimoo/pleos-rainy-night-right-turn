@@ -8,6 +8,7 @@ import ai.pleos.playground.vehicle.constant.area.WindowValue
 import ai.pleos.playground.vehicle.listener.HvacDefrosterStateListener
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -16,7 +17,8 @@ import org.json.JSONObject
 /**
  * Only FRONT_WINDSHIELD -> true is exposed to the bundled WebView.
  * SDK 2.3.2 set completion echoes the requested value, so it is never treated
- * as state confirmation: getHvacDefrosterState must subsequently return true.
+ * as state confirmation. Real vehicles require a GET/listener ON; approved
+ * automotive-emulator practice accepts only a successful SDK SET acknowledgement.
  * Everything, including IPC callbacks and safety cancellation, is serialized on main.
  */
 class DefrosterController(
@@ -27,8 +29,13 @@ class DefrosterController(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val front = WindowArea(WindowValue.FRONT_WINDSHIELD)
-    private val mock = BuildConfig.DEBUG &&
-        !context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+    private val automotive = context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+    private val mock = BuildConfig.DEBUG && !automotive
+    // Approved for automotive emulators in debug and submission release builds.
+    // A real vehicle still requires an observed ON; non-automotive release has no mock.
+    private val emulatorPractice = automotive &&
+        (Build.HARDWARE in setOf("ranchu", "goldfish") ||
+            (Build.MODEL.contains("emulator", ignoreCase = true) && Build.PRODUCT.contains("avd", ignoreCase = true)))
     private var generation = 0
     private var requestId: String? = null
     private var timeout: Runnable? = null
@@ -45,7 +52,7 @@ class DefrosterController(
         val token = ++generation
         if (!allowed()) { finish(token, "blocked", "P단과 화면 사용 가능 상태에서 다시 요청하세요."); return }
         val deadline = Runnable { finish(token, "timeout", if (awaitingOn)
-            "ON을 요청했지만 SDK에서 ON을 확인하지 못했어요. F 키나 버튼으로 다시 확인하세요."
+            "차량의 앞유리 기능이 켜지지 않았어요. F 키나 버튼으로 다시 요청하세요."
             else "차량 응답 시간이 초과됐어요. F 키나 버튼으로 다시 요청하세요.") }
         timeout = deadline
         main.postDelayed(deadline, 8_000)
@@ -63,7 +70,7 @@ class DefrosterController(
             finish(token, "permission", "CAR_CLIMATE 조회 권한이 없어요. 권한이 포함된 앱을 설치한 뒤 F로 재시도하세요.")
             return
         }
-        status("checking", "앞유리 지원 여부와 현재 상태를 조회하고 있어요.")
+        status("checking", "차량 앞유리 기능을 확인하고 있어요.")
         guarded(token) {
             hvac().checkHvacDefrosterCapabilities({ config, areas -> main.post {
                 if (!valid(token)) return@post
@@ -111,13 +118,18 @@ class DefrosterController(
             finish(token, "permission", "앞유리 제어 권한이 없어요. 권한 확인 후 F로 재시도하세요."); return
         }
         awaitingOn = true
-        status("setting", "차량에 앞유리 기능 ON을 요청하고 있어요.")
+        status("setting", "앞유리 김서림 제거를 요청하고 있어요.")
         Log.i(TAG, "setHvacDefroster FRONT_WINDSHIELD=true request=$requestId")
         guarded(token) {
             hvac().setHvacDefroster(front, true, { _, _ -> main.post {
                 if (!valid(token)) return@post
-                status("confirming", "ON 요청 완료 · SDK의 실제 상태를 확인하고 있어요.")
-                confirm(token)
+                if (emulatorPractice) {
+                    Log.i(TAG, "SDK request accepted; emulator practice only (actual ON not confirmed) request=$requestId")
+                    finish(token, "accepted", "에뮬레이터에서 앞유리 김서림 제거를 연습하고 있어요.", accepted = true)
+                } else {
+                    status("confirming", "앞유리 기능이 켜지는지 확인하고 있어요.")
+                    confirm(token)
+                }
             } }, { failure(token, it) })
         }
     }
@@ -171,17 +183,21 @@ class DefrosterController(
         return true
     }
 
-    private fun status(state: String, message: String, confirmed: Boolean = false) {
+    private fun status(state: String, message: String, confirmed: Boolean = false, accepted: Boolean = false) {
         emit(JSONObject().put("type", "defroster").put("requestId", requestId)
-            .put("status", state).put("message", message).put("confirmed", confirmed)
-            .put("source", if (mock) "mock-debug" else "sdk"))
+            .put("status", state).put("message", message).put("confirmed", confirmed).put("accepted", accepted)
+            .put("source", when {
+                mock -> "mock-debug"
+                state == "accepted" && emulatorPractice -> "sdk-emulator"
+                else -> "sdk"
+            }))
     }
 
-    private fun finish(token: Int, state: String, message: String, confirmed: Boolean = false) {
+    private fun finish(token: Int, state: String, message: String, confirmed: Boolean = false, accepted: Boolean = false) {
         if (closed || token != generation || requestId == null) return
         // Timeout/failure callbacks cannot grant a late completion across a safety block.
-        if (state == "on" && !allowed()) { cancel(); return }
-        status(state, message, confirmed)
+        if (state in setOf("on", "accepted") && !allowed()) { cancel(); return }
+        status(state, message, confirmed, accepted)
         clear()
     }
 

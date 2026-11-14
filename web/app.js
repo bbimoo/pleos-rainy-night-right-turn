@@ -4,7 +4,7 @@
   const coarse=matchMedia('(pointer: coarse)'), forceTouch=params.get('touch')==='1';
   let attempt=0, run=Drive.create(attempt), state='checking', paused=false, animation=0, frame=null, lastInput=null;
   let cueImage=null, cueCapturedAt=null, checkTimer=null, checked=false;
-  let defrost=null;
+  let defrost=null,mistShift=null;
   const inputAllowed=()=>state==='play'&&!paused&&!hub.pleos.blocked()&&!document.hidden;
   const hub=GameInput.create({host,enabled:()=>state==='play'&&!paused&&!hub.pleos.blocked()&&!document.hidden,
     onChange:syncLifecycle,command(type,value){
@@ -25,15 +25,17 @@
     get('defrost-button').textContent=status.phase==='requesting'?'차량 상태 확인 중…':status.phase==='clearing'?'김서림을 제거하고 있어요…':status.phase==='error'?'다시 요청 · F':'앞유리 김서림 제거 · F';
     updateTouch();
   }
+  function alignMist(){
+    if(!defrost.snapshot().active){mistShift=null;return;}
+    // Match cockpit()'s -view * 500 shift in its 1000-unit design space.
+    const shift=-scene.composition().view*50;
+    if(mistShift===null||Math.abs(shift-mistShift)>.005){
+      get('windshield-mist').style.transform='translateX('+shift+'%)';mistShift=shift;
+    }
+  }
   function advance(dt,input){
-    if(!defrost.snapshot().used&&run.s>=Drive.track.turnStart-2){
-      hub.clear();defrost.begin(run);scene.draw(run,0);updateHud();
-    }
-    if(defrost.snapshot().active){defrost.tick(dt);return;}
     Drive.step(run,dt,input);
-    if(!run.result&&!defrost.snapshot().used&&run.s>=Drive.track.turnStart-2){
-      hub.clear();defrost.begin(run);scene.draw(run,0);updateHud();
-    }
+    defrost.tick(dt);
   }
   function fit(){
     // innerWidth can include overflowing document content in Android WebView.
@@ -59,7 +61,7 @@
     if(direction!==run.signal)Drive.signal(run,direction||run.signal);
   }
   function updateTouch(){
-    get('touch').hidden=state!=='play'||paused||Boolean(hub.pleos.blocked())||Boolean(defrost?.snapshot().active)||!(forceTouch||host||coarse.matches);
+    get('touch').hidden=state!=='play'||paused||Boolean(hub.pleos.blocked())||!(forceTouch||host||coarse.matches);
     for(const b of get('touch').querySelectorAll('[data-capability]'))b.hidden=b.dataset.capability!=='brake'&&hub.pleos.uses(b.dataset.capability);
     get('touch-wipers').setAttribute('aria-pressed',String(run.wipers!==false));
   }
@@ -127,7 +129,8 @@
   function begin(){
     if(hub.pleos.blocked()||document.hidden)return;
     defrost.reset();run=Drive.create(attempt);cueImage=null;cueCapturedAt=null;paused=false;hub.reset();scene.reset();frame=null;
-    screen('play');syncLifecycle();get('scene').focus({preventScroll:true});
+    defrost.start(run);
+    screen('play');scene.draw(run,0);alignMist();updateHud();syncLifecycle();get('scene').focus({preventScroll:true});
   }
   function updateHud(){
     const left=run.signal<0,right=run.signal>0;
@@ -148,7 +151,7 @@
   }
   function finish(){
     if(run.samples.at(-1)?.t!==run.t)run.samples.push({t:run.t,speed:run.speed*3.6,brake:run.brakeForce,steer:run.steer,signal:run.signal,x:run.x,z:run.z});
-    hub.clear();const pass=passed(), [defaultTitle,summary,tip]=outcomes[run.result];
+    defrost.suspend();hub.clear();const pass=passed(), [defaultTitle,summary,tip]=outcomes[run.result];
     const title=run.result==='safe'&&run.waited&&run.stops.length?'안전 정지 성공!':defaultTitle;
     get('result').classList.toggle('fail',!pass);
     get('result-title').textContent=title;get('result-summary').textContent=summary;get('result-tip').textContent=tip;
@@ -238,10 +241,9 @@
       const right=run.signal===1;if(dt>0)advance(dt,lastInput);
       if(right&&run.signal===0){hub.cancelRight();lastInput.turnSignal='OFF';}updateHud();
     }
-    // Hold the existing Canvas image during condensation. Only a single DOM
-    // layer's opacity changes; no blur or scene/image regeneration is added.
-    const frozen=state==='play'&&defrost.snapshot().active;
-    if(state!=='report'&&!frozen)scene.draw(run,dt);
+    // Keep driving/rendering normally under the single translucent layer.
+    // Clearing changes only opacity, with no extra blur or image generation.
+    if(state!=='report'){scene.draw(run,dt);alignMist();}
     if(state==='play'&&run.cueAt!==null&&!run.empty&&!cueImage){cueImage=canvas.toDataURL('image/jpeg',.85);cueCapturedAt=run.t;}
     if(state==='play'&&run.result)finish();
     if(!get('diag').hidden)get('diag').textContent=JSON.stringify(stats());schedule();

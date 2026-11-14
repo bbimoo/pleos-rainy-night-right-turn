@@ -15,7 +15,7 @@ async function main(){
  const state=()=>evaluate('__game.getState()');
  const until=async(fn,ms=12000)=>{const end=Date.now()+ms;while(Date.now()<end){const r=await state();if(fn(r))return r;await wait(80);}throw Error('Condition timeout: '+JSON.stringify(await state()));};
  const consoleState=async()=>{try{return await(await fetch('http://127.0.0.1:8088/vehicle/state',{signal:AbortSignal.timeout(2000)})).json();}catch{return null;}};
- const prepare=async()=>{await evaluate("document.getElementById('retry').click();__game.simulate(20,{steer:1})");return until(r=>r.defrost.phase==='waiting');};
+ const prepare=async()=>{await evaluate("(()=>{const random=Math.random;Math.random=()=>0;try{document.getElementById('retry').click();}finally{Math.random=random;}})()");return until(r=>r.defrost.phase==='waiting');};
  const touch=async()=>{const p=await evaluate("(()=>{const r=document.getElementById('defrost-button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
    await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...p,radiusX:1,radiusY:1,force:1}]});await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});};
  try{
@@ -24,36 +24,40 @@ async function main(){
    await evaluate("window.__defrostMessages=[];const receive=MCER.Defroster.receive;MCER.Defroster.receive=m=>{window.__defrostMessages.push(m);receive(m);}");
    const beforeConsole=await consoleState();
    const before=await prepare(),fixed=[before.t,before.s,before.x,before.z];
-   await wait(500);const still=await state();assert.deepEqual([still.t,still.s,still.x,still.z],fixed);assert.equal(still.speed,0);
+   await wait(500);const still=await state();assert(still.t>before.t&&still.s>before.s&&still.speed>0,'startup mist must not force a stop');assert(still.defrost.selected);
    await exec('adb',['-s',serial,'shell','input','keyevent','34']);
    const on=await until(r=>['clearing','error'].includes(r.defrost.phase));
    if(on.defrost.phase==='error'){
      const messages=await evaluate('window.__defrostMessages');
-     const report={outcome:'SDK ON not confirmed; fail-closed',actualSdkSetRequested:messages.some(m=>m.source==='sdk'&&m.status==='setting'),
+     const report={outcome:'SDK ON not confirmed; mist retained during driving',actualSdkSetRequested:messages.some(m=>m.source==='sdk'&&m.status==='setting'),
        actualSdkSetAcknowledged:messages.some(m=>m.source==='sdk'&&m.status==='confirming'),actualSdkOnVerified:false,
        nativeKeyboardF:true,before:fixed,after:[on.t,on.s,on.x,on.z],defrost:on.defrost,messages};
-     assert.deepEqual(report.after,fixed);assert.equal(on.defrost.opacity,.82);
+     assert(on.t>before.t&&on.s>before.s,'SDK timeout must not stop driving');assert.equal(on.defrost.opacity,.82);
      const out=path.join(__dirname,'../android/app/build/defrost-report');
      await fs.mkdir(out,{recursive:true});await fs.writeFile(path.join(out,'sdk-unconfirmed.json'),JSON.stringify(report,null,2));
      console.log(JSON.stringify(report,null,2));
      if(!process.argv.includes('--allow-sdk-off'))throw Error('Native defroster error: '+on.defrost.detail);
      assert(report.actualSdkSetRequested&&report.actualSdkSetAcknowledged);
      // A real touch retries the SDK request. It must still never clear on ACK alone.
-     const count=messages.length;await touch();
+     await prepare();const count=messages.length;await touch();
      const retry=await until(r=>['clearing','error'].includes(r.defrost.phase));
-     assert.equal(retry.defrost.phase,'error');assert.deepEqual([retry.t,retry.s,retry.x,retry.z],fixed);
+     assert.equal(retry.defrost.phase,'error');assert.equal(retry.defrost.opacity,.82);assert(retry.t>0&&retry.s>0);
      const touchMessages=(await evaluate('window.__defrostMessages')).slice(count);
      assert(touchMessages.some(m=>m.status==='setting'));assert(touchMessages.some(m=>m.status==='timeout'));
-     report.touchRetry={method:'real WebView touch',messages:touchMessages,remainsFrozen:true};
+     report.touchRetry={method:'real WebView touch',messages:touchMessages,mistRetainedWhileDriving:true};
      await fs.writeFile(path.join(out,'sdk-unconfirmed.json'),JSON.stringify(report,null,2));
-     console.log('PASS: actual SDK requests via F and touch; SDK remains OFF, ACK is not treated as ON, timeout/retry preserves position and time.');
+     console.log('PASS: actual SDK requests via F and touch; SDK remains OFF, ACK is not treated as ON, timeout/retry retains mist while driving continues.');
      await send('Page.reload',{ignoreCache:true});return;
    }
-   assert.deepEqual([on.t,on.s,on.x,on.z],fixed,'ON confirmation must not advance the scenario');
+   assert(on.t>before.t&&on.s>before.s,'driving continues before and during ON confirmation');
    const done=await until(r=>r.defrost.phase==='done');assert.equal(done.defrost.used,true);
    const evidence=await evaluate('window.__defrostMessages');
-   assert(evidence.some(m=>m.status==='on'&&m.confirmed));
+   assert(evidence.some(m=>m.status==='on'&&m.confirmed||m.status==='accepted'&&m.accepted&&m.confirmed===false&&m.source==='sdk-emulator'));
    const source=on.defrost.source;
+   if(source==='sdk-emulator'){
+     assert(evidence.some(m=>m.status==='setting'),'emulator practice must send the real SDK request');
+     assert(!evidence.some(m=>m.status==='on'&&m.confirmed),'do not claim an observed ON');
+   }
    // Current ON is reused on a fresh run; touch must reach the same host request.
    const second=await prepare();const index=evidence.length;await touch();
    const secondDone=await until(r=>['done','error'].includes(r.defrost.phase));
@@ -76,13 +80,13 @@ async function main(){
      await evaluate("document.getElementById('resume').click()");
      blockedCases.push({type,method:'injected WebView safety message; native gate unchanged',noRequest:true,manualResume:true});
    }
-   const report={source,actualSdkVerified:source==='sdk',bootstrap:{parked:bootstrap.pleos.parked,reason:bootstrap.pleos.reason},
-     keyboard:{method:'adb Android KEYCODE_F -> pre-IME -> shared web command',before:fixed,confirmedAt:[on.t,on.s,on.x,on.z],resumed:done.defrost.phase,messages:evidence},
-     touch:{method:'WebView touchStart/touchEnd -> same command',noDuplicateSet:!touchMessages.some(m=>m.status==='setting'),messages:touchMessages},
+   const report={source,actualSdkVerified:source==='sdk',actualSdkOnVerified:source==='sdk',actualSdkRequestVerified:evidence.some(m=>m.status==='setting'),emulatorPractice:source==='sdk-emulator',bootstrap:{parked:bootstrap.pleos.parked,reason:bootstrap.pleos.reason},
+     keyboard:{method:'adb Android KEYCODE_F -> pre-IME -> shared web command',before:fixed,responseAt:[on.t,on.s,on.x,on.z],cleared:done.defrost.phase,messages:evidence},
+     touch:{method:'WebView touchStart/touchEnd -> same command',setRequested:touchMessages.some(m=>m.status==='setting'),messages:touchMessages},
      blockedCases,virtualConsole:{use:'read-only before/after',before:beforeConsole,after:await consoleState()}};
    const out=path.join(__dirname,'../android/app/build/defrost-report');
    await fs.mkdir(out,{recursive:true});await fs.writeFile(path.join(out,source+'.json'),JSON.stringify(report,null,2));
-   console.log(JSON.stringify(report,null,2));
+   console.log(JSON.stringify({...report,virtualConsole:{use:'read-only status check',beforeFrontDefroster:beforeConsole?.hvac?.front_defroster_on??null,afterFrontDefroster:report.virtualConsole.after?.hvac?.front_defroster_on??null}},null,2));
    // Leave a fresh real parked game for the user.
    await send('Page.reload',{ignoreCache:true});
  }finally{ws.close();}

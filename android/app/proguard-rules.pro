@@ -10,6 +10,13 @@
 -keep interface ai.pleos.playground.** { *; }
 -dontwarn ai.pleos.playground.**
 
+# Vehicle SDK 2.3.2의 Gson 2.10.1 TypeToken은 런타임에 제네릭 부모 타입을 읽습니다.
+# R8 full mode에서도 Signature와 TypeToken 계층을 보존해야 capability 조회가 동작합니다.
+# https://google.github.io/gson/Troubleshooting.html#proguard-r8
+-keepattributes Signature
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+
 # CarUxRestrictionsManager(android.car)는 기기에 있는 라이브러리라 APK에 들어가지 않습니다.
 -dontwarn android.car.**
 

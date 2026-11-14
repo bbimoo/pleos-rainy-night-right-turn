@@ -41,32 +41,56 @@ async function main(){
     await evaluate('__game.simulate(3)');assert.equal(await evaluate('__game.getState().t'),stopped);await screenshot('08-paused');
     await evaluate("__game.pleos({type:'parked',parked:true});__game.simulate(3)");assert.equal(await evaluate('__game.getState().t'),stopped);assert(await evaluate('__game.getState().paused'));
     await evaluate("document.getElementById('resume').click();__game.simulate(.2)");assert(await evaluate('__game.getState().t')>stopped);
-    // Actual app integration: trigger before yaw, freeze scenario time, F and touch,
-    // and keep the existing explicit resume even if clearing was underway.
-    await evaluate("__game.simulate(20,{steer:1,throttle:0})");await tick();
+    // Choose both outcomes deterministically without a production override.
+    const startWithMist=async mist=>evaluate(`(()=>{
+      const random=Math.random,create=Drive.create;Math.random=()=>${mist?0:.99};Drive.create=()=>create(0,()=>.5);
+      try{document.getElementById('retry').click();}finally{Math.random=random;Drive.create=create;}
+    })()`);
+    await startWithMist(false);
+    assert.equal(await evaluate('__game.getState().defrost.selected'),false);
+    await evaluate("__game.simulate(15,{steer:1})");await tick();
+    assert(!await evaluate('__game.getState().defrost.active'));
+    assert(await evaluate('__game.getState().s')>await evaluate('Drive.track.turnStart'),'no turn-entry interlude on a clear round');
+    await startWithMist(true);await tick();
     const mist=await evaluate('__game.getState()');
-    assert.equal(mist.defrost.phase,'waiting');assert.equal(mist.speed,0);assert.equal(mist.yaw,0);
-    assert(mist.s<await evaluate('Drive.track.turnStart'));
-    const waitingPedZ=await evaluate('Drive.pedestrian(__game.getState()).z');
+    assert.equal(mist.defrost.phase,'waiting');assert.equal(mist.defrost.selected,true);assert(mist.s<.01);
     await screenshot('16-condensation');
-    await evaluate('__game.simulate(5,{steer:1,throttle:1})');
-    assert.deepEqual(await evaluate('(()=>{const r=__game.getState();return [r.t,r.s,Drive.pedestrian(r).z]})()'),[mist.t,mist.s,waitingPedZ]);
+    // The cached windshield outline follows the same cabin shift during glances.
+    for(const [signal,name] of [['LEFT','left'],['RIGHT','right'],['OFF','front-return']]){
+      await evaluate("__game.setTurnSignal('"+signal+"')");
+      for(let i=0;i<35;i++)await tick();
+      const alignment=await evaluate(`(()=>{
+        const m=new DOMMatrixReadOnly(getComputedStyle(document.getElementById('windshield-mist')).transform);
+        return Math.abs(m.m41+__game.composition().view*document.getElementById('scene').getBoundingClientRect().width*.5);
+      })()`);
+      assert(alignment<.1,'mist must follow the cockpit during '+name);
+      await screenshot('16-condensation-'+name);
+    }
+    const buttonBounds=await evaluate("(()=>{const b=document.getElementById('defrost-button').getBoundingClientRect(),s=document.getElementById('speed-cluster').getBoundingClientRect();return {right:b.right,speedLeft:s.left}})()");
+    assert(buttonBounds.right<buttonBounds.speedLeft,'compact action must not cover the speed HUD');
+    await evaluate('__game.simulate(3,{steer:1,throttle:1})');
+    assert(await evaluate('__game.getState().t')>mist.t);
+    assert(await evaluate('__game.getState().s')>mist.s,'driving continues under condensation');
+    assert.equal(await evaluate('__game.getState().defrost.opacity'),.82,'driving cannot clear the mist');
+    // Brakes and steering remain usable while the player chooses when to clear.
+    await evaluate('__game.simulate(2,{brake:1})');assert.equal(await evaluate('__game.getState().speed'),0);
     await page('Input.dispatchKeyEvent',{type:'keyDown',key:'f',code:'KeyF',windowsVirtualKeyCode:70});
     await page('Input.dispatchKeyEvent',{type:'keyUp',key:'f',code:'KeyF',windowsVirtualKeyCode:70});
     assert.equal(await evaluate('__game.getState().defrost.source'),'mock-browser');
-    await evaluate('__game.simulate(.5)');const alpha=await evaluate('__game.getState().defrost.opacity');assert(alpha>0&&alpha<.82);
+    await evaluate('__game.simulate(.5)');const fading=await evaluate('__game.getState()'),alpha=fading.defrost.opacity;assert(alpha>0&&alpha<.82);
     await evaluate("__game.pleos({type:'parked',parked:false});__game.simulate(5)");
     await evaluate("document.getElementById('defrost-button').click()");assert.equal(await evaluate('__game.getState().defrost.opacity'),alpha);
     await evaluate("__game.pleos({type:'parked',parked:true});__game.simulate(5)");
-    assert.equal(await evaluate('__game.getState().t'),mist.t);assert(await evaluate('__game.getState().paused'));
-    await evaluate("document.getElementById('resume').click();__game.simulate(1/60)");
-    assert.equal(await evaluate('__game.getState().t'),mist.t,'first resumed frame still clears at the same location');
-    await evaluate('__game.simulate(1.7)');assert.equal(await evaluate('__game.getState().defrost.phase'),'done');
-    // Retry creates a fresh once-per-game interlude; touch runs the same command.
-    await evaluate("document.getElementById('retry').click();__game.simulate(20,{steer:1})");
-    assert.equal(await evaluate('__game.getState().defrost.phase'),'waiting');
+    assert.equal(await evaluate('__game.getState().t'),fading.t);assert(await evaluate('__game.getState().paused'));
+    await evaluate("document.getElementById('resume').click();__game.simulate(1.7)");
+    assert(await evaluate('__game.getState().t')>fading.t);
+    assert.equal(await evaluate('__game.getState().defrost.phase'),'done');
+    await screenshot('17-condensation-cleared');
+    // A new fogged round starts at departure; touch runs the same command.
+    await startWithMist(true);assert.equal(await evaluate('__game.getState().defrost.phase'),'waiting');
     await evaluate("document.getElementById('defrost-button').click();__game.simulate(1.7)");
     assert.equal(await evaluate('__game.getState().defrost.phase'),'done');
+    await startWithMist(false);assert.equal(await evaluate('__game.getState().defrost.active'),false);
     // Full real Drive runs: steady approach fails; careful braking succeeds.
     async function play(careful){
       await evaluate(`(()=>{const create=Drive.create;Drive.create=()=>create(0,()=>.5);document.getElementById('retry').click();Drive.create=create;window.__brakeLatch=false;__game.setTurnSignal('RIGHT');})()`);
