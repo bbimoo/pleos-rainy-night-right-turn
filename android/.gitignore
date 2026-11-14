@@ -1,0 +1,22 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Android Studio의 Generate Signed APK 출력 폴더. 제출용 APK는 레포 루트의 apk/에 둡니다.
+app/release/
+
+# 서명 정보는 커밋하지 않습니다.
+keystore.properties
+*.jks
+*.keystore
+
+# 루트 .gitignore가 wrapper 파일을 무시하므로 여기서 다시 포함합니다.
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties

@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+.env
+.env.*
+*.log
+
+# 로컬 개발 도구 작업 파일
+.omc/
+
+# 서명 키는 어디에 두든 커밋하지 않습니다.
+*.jks
+*.keystore
+keystore.properties
+
+# 제출용 zip
+*.zip

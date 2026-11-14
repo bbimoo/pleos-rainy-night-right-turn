@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+
+    <!-- Vehicle SDK 읽기 권한: 실제로 쓰는 API만 선언합니다. -->
+    <!-- CAR_DRIVE: 기어(주차 판단), 브레이크 페달, 조향각 -->
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <!-- CAR_LIGHTS: 방향지시등 -->
+    <uses-permission android:name="pleos.car.permission.CAR_LIGHTS" />
+    <!-- SDK 2.3.2 normal permissions: front defroster capability/state and ON control. -->
+    <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_CLIMATE" />
+
+    <!-- 게임은 APK 안의 에셋만 읽으므로 INTERNET 권한이 없습니다. -->
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RainyTurn"
+        android:usesCleartextTraffic="false">
+
+        <uses-library
+            android:name="android.car"
+            android:required="false" />
+
+        <!-- distractionOptimized를 선언하지 않았으므로 주행 중에는 플랫폼이 이 화면을 막습니다. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

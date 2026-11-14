@@ -1,0 +1,16 @@
+# Pleos 공식 Vehicle 샘플 앱(pleos-sample-vehicle-app)과 같은 기준선입니다.
+[versions]
+agp = "8.8.2"
+kotlin = "2.0.0"
+coreKtx = "1.16.0"
+webkit = "1.12.1"
+vehicleSdk = "2.3.2"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+pleos-vehicle = { module = "ai.pleos.playground:Vehicle", version.ref = "vehicleSdk" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
