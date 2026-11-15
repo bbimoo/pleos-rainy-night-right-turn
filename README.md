@@ -46,13 +46,13 @@
 | 사용 SDK | Pleos Vehicle SDK 2.3.2: 기어, 조향각, 브레이크 페달, 방향지시등 읽기 / 앞유리 디프로스터(HVAC) 조회와 켜기 |
 | 플랫폼 API | AAOS `CarUxRestrictionsManager` (주행 중 제한 감지) |
 | 권한 | `pleos.car.permission.CAR_DRIVE`, `CAR_LIGHTS`, `CAR_CLIMATE`, `CONTROL_CAR_CLIMATE` |
-| **APK 위치** | [`apk/`](apk/) 폴더의 `팀명_앱이름_release.apk` (서명된 release 빌드) |
+| **APK 위치** | [p-안전코치.apk](apk/p-안전코치.apk) (서명된 release 빌드) |
 
 ### 실행 방법
 
 **APK로 바로 실행**
 1. Pleos Connect Emulator v2.1.0(Android API 34)을 Cold boot로 실행합니다. 설치 방법은 [android/README.md](android/README.md)에 있습니다.
-2. `adb install -r apk/<APK 파일명>`으로 설치하고, 앱 목록에서 "비 오는 밤의 우회전"을 실행합니다.
+2. `adb install -r "apk/p-안전코치.apk"`로 설치하고, 앱 목록에서 "비 오는 밤의 우회전"을 실행합니다.
 3. 기어가 **P**일 때만 게임이 열립니다.
 4. Virtual Console에서 기어, 브레이크, 조향각, 방향지시등을 바꿔 조작합니다. 먼저 `adb forward tcp:8088 tcp:8088`을 실행한 뒤 http://127.0.0.1:8088/ 의 Motion 메뉴를 엽니다.
 
