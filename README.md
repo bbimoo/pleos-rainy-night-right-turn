@@ -46,7 +46,7 @@
 | 사용 SDK | Pleos Vehicle SDK 2.3.2: 기어, 조향각, 브레이크 페달, 방향지시등 읽기 / 앞유리 디프로스터(HVAC) 조회와 켜기 |
 | 플랫폼 API | AAOS `CarUxRestrictionsManager` (주행 중 제한 감지) |
 | 권한 | `pleos.car.permission.CAR_DRIVE`, `CAR_LIGHTS`, `CAR_CLIMATE`, `CONTROL_CAR_CLIMATE` |
-| **APK 위치** | [p-안전코치.apk](apk/p-안전코치.apk) (서명된 release 빌드) |
+| **APK 위치** | [APK 다운로드](apk/p-안전코치.apk) (서명된 release 빌드) |
 
 ### 실행 방법
 
